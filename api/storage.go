@@ -208,3 +208,27 @@ func (s *Storage) DeleteUser(uuid string) error {
 	_, err := s.db.Exec("delete from account where uuid = $1", uuid)
 	return err
 }
+
+func (s *Storage) GetUserByUuid(uuidStr string) (*User, error) {
+
+	uuid, err := uuid.Parse(uuidStr)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query("select username, date_joined from account where uuid = $1", uuidStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	user := new(User)
+	if rows.Next() {
+		rows.Scan(&user.username, &user.dateJoined)
+	} else {
+		return nil, fmt.Errorf("user not found")
+	}
+	user.uuid = uuid
+
+	return user, nil
+}

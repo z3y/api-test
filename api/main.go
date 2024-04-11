@@ -27,17 +27,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_ = storage.NewUser(&User{
-		username: "docker",
-		password: "hunter2",
-	})
+	// _ = storage.NewUser(&User{
+	// 	username: "docker",
+	// 	password: "hunter2",
+	// })
+	// storage.DeleteUser("afa62c86-252b-42fe-9a71-5c214974ec77")
 
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	storage.DeleteUser("afa62c86-252b-42fe-9a71-5c214974ec77")
-
-	// server := NewAPIServer(":3000", store)
-	// server.Run()
+	api := NewApi(":3000", storage)
+	api.Run()
 }
