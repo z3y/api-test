@@ -1,18 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
-	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-
-	id := uuid.New()
-	fmt.Println(id.String())
 
 	_, isDocker := os.LookupEnv("POSTGRES_PASSWORD")
 	if !isDocker {
@@ -32,16 +27,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err := storage.NewUser(&User{
+	_ = storage.NewUser(&User{
 		username: "docker",
 		password: "hunter2",
 	})
 
-	if err != nil {
-		log.Fatal(err)
-	}
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
-	// storage.DeleteUser("b62f2146-25dd-498f-9bac-1291a0abcb96")
+	storage.DeleteUser("cf3c5a1e-56d0-4793-8e2a-45891b05739e")
 
 	// server := NewAPIServer(":3000", store)
 	// server.Run()

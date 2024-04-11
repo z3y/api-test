@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -18,7 +19,17 @@ func (s *Storage) Connect() error {
 	fmt.Println("connecting to database")
 
 	pw := os.Getenv("POSTGRES_PASSWORD")
-	connectionString := "user=postgres dbname=postgres password=" + pw + " sslmode=disable"
+
+	local := flag.Bool("local", false, "local db")
+	flag.Parse()
+
+	var connectionString string
+	if *local {
+		connectionString = "host=localhost port=5432 user=postgres dbname=postgres password=" + pw + " sslmode=disable"
+	} else {
+		connectionString = "host=db_postgres port=5432 user=postgres dbname=postgres password=" + pw + " sslmode=disable"
+	}
+
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
 		return err
@@ -166,10 +177,10 @@ func (s *Storage) NewUser(usr *User) error {
 		return fmt.Errorf("username taken")
 	}
 
-	fmt.Println("create user", usr.username, usr.uuid)
-
 	usr.dateJoined = time.Now().UTC()
 	usr.uuid = uuid.New()
+
+	fmt.Println("create user", usr.username, usr.uuid)
 
 	query := `insert into account
 	(username, encrypted_password, date_joined, uuid)

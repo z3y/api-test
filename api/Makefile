@@ -2,7 +2,7 @@ build:
 	@go build -o ./bin/api
 
 run: build
-	@./bin/api
+	@./bin/api --local
 
 test:
 	@go test -v ./...
