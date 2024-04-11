@@ -19,7 +19,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := storage.SetupSchema(); err != nil {
+	if err := storage.Migrate(); err != nil {
 		log.Fatal(err)
 	}
 

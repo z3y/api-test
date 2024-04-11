@@ -30,22 +30,81 @@ func (s *Storage) Connect() error {
 	return nil
 }
 
-func (s *Storage) SetupSchema() error {
-	fmt.Println("setting up database schema")
+func (s *Storage) Migrate() error {
 
-	query := `create table if not exists account()`
+	fmt.Println("setting up database migrations")
+	version, err := s.getVersion()
+	if err != nil {
+		return err
+	}
 
-	s.createColumnIfNotExists("account", "id serial primary key")
-	s.createColumnIfNotExists("account", "username varchar(255)")
-	s.createColumnIfNotExists("account", "encrypted_password varchar(255)")
-	s.createColumnIfNotExists("account", "date_joined timestamp")
+	fmt.Println("database version: ", version)
 
-	_, err := s.db.Exec(query)
+	migrations := []func(s *Storage) error{
+		func(s *Storage) error {
+			query := `create table if not exists account (
+				id serial primary key,
+				username varchar(255),
+				encypted_password varchar(255),
+				date_joined timestamp
+			)`
+			_, err := s.db.Exec(query)
+			return err
+		},
+	}
+
+	previousVersion := version
+
+	for i, f := range migrations {
+		if version <= i {
+			err := f(s)
+			if err != nil {
+				return err
+			}
+			version++
+			fmt.Println("database version updated from:", version-1, "to:", version)
+		}
+	}
+
+	if previousVersion != version {
+		if err := s.setVersion(version); err != nil {
+			return err
+		}
+	}
+
+	return err
+}
+func (s *Storage) setVersion(version int) error {
+	_, err := s.db.Exec("update version set version = $1", version)
 	return err
 }
 
-func (s *Storage) createColumnIfNotExists(table, column string) error {
-	query := fmt.Sprintf("alter table %s add column if not exists %s", table, column)
-	_, err := s.db.Exec(query)
-	return err
+func (s *Storage) getVersion() (int, error) {
+	_, err := s.db.Exec("create table if not exists version(version int)")
+	if err != nil {
+		return 0, err
+	}
+
+	rows, err := s.db.Query("select * from version")
+	if err != nil {
+		return 0, err
+	}
+
+	version := -1
+	if rows.Next() {
+		err := rows.Scan(
+			&version,
+		)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		_, err := s.db.Query("insert into version(version) values (0)")
+		if err != nil {
+			return 0, err
+		}
+		version = 0
+	}
+
+	return version, nil
 }
