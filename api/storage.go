@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
 
@@ -41,13 +43,34 @@ func (s *Storage) Migrate() error {
 	fmt.Println("database version: ", version)
 
 	migrations := []func(s *Storage) error{
+
+		// version 1
 		func(s *Storage) error {
-			query := `create table if not exists account (
-				id serial primary key,
-				username varchar(255),
-				encypted_password varchar(255),
-				date_joined timestamp
+			query := `
+			create table if not exists account(
+			id serial primary key,
+			username varchar(255),
+			encypted_password varchar(255),
+			date_joined timestamp
 			)`
+			_, err := s.db.Exec(query)
+			return err
+		},
+
+		// version 2
+		func(s *Storage) error {
+			query := `
+			alter table account
+			add uuid varchar(255)`
+			_, err := s.db.Exec(query)
+			return err
+		},
+
+		// version 3
+		func(s *Storage) error {
+			query := `
+			alter table account
+			rename column encypted_password to encrypted_password`
 			_, err := s.db.Exec(query)
 			return err
 		},
@@ -89,6 +112,7 @@ func (s *Storage) getVersion() (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer rows.Close()
 
 	version := -1
 	if rows.Next() {
@@ -107,4 +131,69 @@ func (s *Storage) getVersion() (int, error) {
 	}
 
 	return version, nil
+}
+
+type User struct {
+	username   string
+	uuid       uuid.UUID
+	dateJoined time.Time
+	password   string
+}
+
+func (s *Storage) UsernameTaken(username string) (bool, error) {
+	rows, err := s.db.Query("select count(1) from account where username = $1", username)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	count := 0
+	if rows.Next() {
+		rows.Scan(&count)
+	}
+
+	return count > 0, nil
+}
+
+func (s *Storage) NewUser(usr *User) error {
+
+	taken, err := s.UsernameTaken(usr.username)
+	if err != nil {
+		return err
+	}
+
+	if taken {
+		return fmt.Errorf("username taken")
+	}
+
+	fmt.Println("create user", usr.username, usr.uuid)
+
+	usr.dateJoined = time.Now().UTC()
+	usr.uuid = uuid.New()
+
+	query := `insert into account
+	(username, encrypted_password, date_joined, uuid)
+	values ($1, $2, $3, $4)`
+
+	_, err2 := s.db.Exec(
+		query,
+		usr.username,
+		usr.password,
+		usr.dateJoined,
+		usr.uuid.String(),
+	)
+
+	if err2 != nil {
+		return err2
+	}
+
+	return nil
+}
+
+func (s *Storage) DeleteUser(uuid string) error {
+
+	fmt.Println("delete user", uuid)
+
+	_, err := s.db.Exec("delete from account where uuid = $1", uuid)
+	return err
 }
