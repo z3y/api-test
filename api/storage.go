@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Storage struct {
@@ -145,10 +146,10 @@ func (s *Storage) getVersion() (int, error) {
 }
 
 type User struct {
-	username   string
-	uuid       uuid.UUID
-	dateJoined time.Time
-	password   string
+	username          string
+	uuid              uuid.UUID
+	dateJoined        time.Time
+	encryptedPassword string
 }
 
 func (s *Storage) UsernameTaken(username string) (bool, error) {
@@ -166,19 +167,27 @@ func (s *Storage) UsernameTaken(username string) (bool, error) {
 	return count > 0, nil
 }
 
-func (s *Storage) NewUser(usr *User) error {
+func (s *Storage) NewUser(username, password string) (*User, error) {
 
-	taken, err := s.UsernameTaken(usr.username)
+	taken, err := s.UsernameTaken(username)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if taken {
-		return fmt.Errorf("username taken")
+		return nil, fmt.Errorf("username taken")
 	}
 
-	usr.dateJoined = time.Now().UTC()
+	encryptedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+
+	usr := new(User)
+	usr.username = username
+	usr.encryptedPassword = string(encryptedPassword)
 	usr.uuid = uuid.New()
+	usr.dateJoined = time.Now().UTC()
 
 	fmt.Println("create user", usr.username, usr.uuid)
 
@@ -186,19 +195,19 @@ func (s *Storage) NewUser(usr *User) error {
 	(username, encrypted_password, date_joined, uuid)
 	values ($1, $2, $3, $4)`
 
-	_, err2 := s.db.Exec(
+	_, err = s.db.Exec(
 		query,
 		usr.username,
-		usr.password,
+		usr.encryptedPassword,
 		usr.dateJoined,
 		usr.uuid.String(),
 	)
 
-	if err2 != nil {
-		return err2
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	return usr, nil
 }
 
 func (s *Storage) DeleteUser(uuid string) error {
@@ -216,7 +225,7 @@ func (s *Storage) GetUserByUuid(uuidStr string) (*User, error) {
 		return nil, err
 	}
 
-	rows, err := s.db.Query("select username, date_joined from account where uuid = $1", uuidStr)
+	rows, err := s.db.Query("select username, date_joined, encrypted_password from account where uuid = $1", uuidStr)
 	if err != nil {
 		return nil, err
 	}
@@ -224,11 +233,15 @@ func (s *Storage) GetUserByUuid(uuidStr string) (*User, error) {
 
 	user := new(User)
 	if rows.Next() {
-		rows.Scan(&user.username, &user.dateJoined)
+		rows.Scan(&user.username, &user.dateJoined, &user.encryptedPassword)
 	} else {
 		return nil, fmt.Errorf("user not found")
 	}
 	user.uuid = uuid
 
 	return user, nil
+}
+
+func (a *User) ValidatePassword(password string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(a.encryptedPassword), []byte(password)) == nil
 }
