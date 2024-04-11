@@ -36,7 +36,7 @@ func main() {
 	// 	log.Fatal(err)
 	// }
 
-	storage.DeleteUser("cf3c5a1e-56d0-4793-8e2a-45891b05739e")
+	storage.DeleteUser("afa62c86-252b-42fe-9a71-5c214974ec77")
 
 	// server := NewAPIServer(":3000", store)
 	// server.Run()

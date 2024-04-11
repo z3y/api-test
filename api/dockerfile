@@ -1,13 +1,13 @@
-FROM golang:1.22.1 AS build
+FROM golang:alpine AS build
 
 WORKDIR /build
 
 COPY go.mod go.sum ./
-COPY *.go Makefile ./
+COPY *.go ./
 RUN go mod download
-RUN make build
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o ./bin/app
 
-FROM ubuntu:latest
+FROM scratch
 WORKDIR /app
-COPY --from=build /build/bin ./bin
-ENTRYPOINT [ "/app/bin/api" ]
+COPY --from=build /build/bin/app .
+CMD ["/app/app"]
