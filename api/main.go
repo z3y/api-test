@@ -1,13 +1,23 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
 	"github.com/joho/godotenv"
 )
 
+var (
+	secretKey []byte
+)
+
 func main() {
+
+	key, _ := GenerateRandomAuthKey()
+	secretKey = []byte(key)
+
+	fmt.Println("key: ", key)
 
 	_, isDocker := os.LookupEnv("POSTGRES_PASSWORD")
 	if !isDocker {

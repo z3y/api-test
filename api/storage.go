@@ -242,6 +242,29 @@ func (s *Storage) GetUserByUuid(uuidStr string) (*User, error) {
 	return user, nil
 }
 
-func (a *User) ValidatePassword(password string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(a.encryptedPassword), []byte(password)) == nil
+func PasswordValid(hashedPassword, password string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)) == nil
+}
+
+func (s *Storage) LoginValid(username, password string) (bool, string) {
+
+	rows, err := s.db.Query("select encrypted_password, uuid from account where username = $1", username)
+	if err != nil {
+		return false, ""
+	}
+	defer rows.Close()
+
+	var encryptedPassword string
+	var id string
+	if rows.Next() {
+		rows.Scan(&encryptedPassword, &id)
+	} else {
+		return false, ""
+	}
+
+	if PasswordValid(encryptedPassword, password) {
+		return true, id
+	}
+
+	return false, ""
 }
