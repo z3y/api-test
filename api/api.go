@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -181,11 +182,6 @@ func (a *Api) handleRegister(w http.ResponseWriter, r *http.Request) {
 	writeJson(w, http.StatusOK, resp)
 }
 
-type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type LoginResponse struct {
 	Token string `json:"token"`
 }
@@ -197,13 +193,27 @@ func (a *Api) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	login := LoginRequest{}
-	if err := json.NewDecoder(r.Body).Decode(&login); err != nil {
-		badRequest(w)
+	basicAuth := r.Header.Get("Authorization")
+	authParts := strings.Split(basicAuth, ":")
+
+	if basicAuth == "" || len(authParts) != 2 {
+		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
 		return
 	}
 
-	valid, id := a.storage.LoginValid(login.Username, login.Password)
+	username, err := base64.URLEncoding.DecodeString(authParts[0])
+	if err != nil {
+		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
+		return
+	}
+
+	password, err := base64.URLEncoding.DecodeString(authParts[1])
+	if err != nil {
+		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
+		return
+	}
+
+	valid, id := a.storage.LoginValid(string(username), string(password))
 	if !valid {
 		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
 		return
@@ -223,7 +233,7 @@ func (a *Api) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJson(w, http.StatusOK, resp)
 }
 
-func extractTokenFromHeader(r *http.Request) (string, error) {
+func extractAuthFromHeader(r *http.Request) (string, error) {
 	authorizationHeader := r.Header.Get("Authorization")
 	if authorizationHeader == "" {
 		return "", fmt.Errorf("token not found")
@@ -246,7 +256,7 @@ func withJwt(f func(w http.ResponseWriter, r *http.Request)) func(w http.Respons
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		jwt, err := extractTokenFromHeader(r)
+		jwt, err := extractAuthFromHeader(r)
 		if err != nil {
 			unauthorized(w)
 			return
