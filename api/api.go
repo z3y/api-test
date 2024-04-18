@@ -144,11 +144,6 @@ func (a *Api) handleUser(w http.ResponseWriter, r *http.Request) {
 	writeJson(w, http.StatusOK, resp)
 }
 
-type RegisterRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 func (a *Api) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != "POST" {
@@ -156,18 +151,19 @@ func (a *Api) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reg := RegisterRequest{}
-	if err := json.NewDecoder(r.Body).Decode(&reg); err != nil {
-		badRequest(w)
+	authorization := r.Header.Get("Authorization")
+	username, password, err := praseBasicAuthentication(authorization)
+	if err != nil {
+		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	if taken, _ := a.storage.UsernameTaken(reg.Username); taken {
+	if taken, _ := a.storage.UsernameTaken(username); taken {
 		writeJson(w, http.StatusConflict, ErrorResponse{Error: "username taken"})
 		return
 	}
 
-	newUsr, err := a.storage.NewUser(reg.Username, reg.Password)
+	newUsr, err := a.storage.NewUser(username, password)
 	if err != nil {
 		badRequest(w)
 		return
@@ -193,23 +189,10 @@ func (a *Api) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	basicAuth := r.Header.Get("Authorization")
-	authParts := strings.Split(basicAuth, ":")
-
-	if basicAuth == "" || len(authParts) != 2 {
-		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
-		return
-	}
-
-	username, err := base64.URLEncoding.DecodeString(authParts[0])
+	authorization := r.Header.Get("Authorization")
+	username, password, err := praseBasicAuthentication(authorization)
 	if err != nil {
-		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
-		return
-	}
-
-	password, err := base64.URLEncoding.DecodeString(authParts[1])
-	if err != nil {
-		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
+		writeJson(w, http.StatusUnauthorized, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -272,4 +255,25 @@ func withJwt(f func(w http.ResponseWriter, r *http.Request)) func(w http.Respons
 
 		f(w, r.WithContext(ctx))
 	}
+}
+
+func praseBasicAuthentication(authorization string) (username, password string, err error) {
+	const prefix = "Basic "
+	if !strings.HasPrefix(authorization, prefix) {
+		return "", "", fmt.Errorf("authorization has no prefix 'Basic '")
+	}
+
+	basicB64 := strings.TrimPrefix(authorization, prefix)
+
+	basic, err := base64.URLEncoding.DecodeString(basicB64)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to decode from base64")
+	}
+
+	authParts := strings.SplitN(string(basic), ":", 2)
+	if len(authParts) != 2 {
+		return "", "", fmt.Errorf("failed to split username:password")
+	}
+
+	return authParts[0], authParts[1], nil
 }

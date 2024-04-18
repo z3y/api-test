@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,16 +18,14 @@ type Storage struct {
 func (s *Storage) Connect() error {
 	fmt.Println("connecting to database")
 
-	pw := os.Getenv("POSTGRES_PASSWORD")
-
 	local := flag.Bool("local", false, "local db")
 	flag.Parse()
 
 	var connectionString string
 	if *local {
-		connectionString = "host=localhost port=5432 user=postgres dbname=postgres password=" + pw + " sslmode=disable"
+		connectionString = "host=localhost port=5432 user=postgres dbname=postgres password=" + pgPassword + " sslmode=disable"
 	} else {
-		connectionString = "host=db_postgres port=5432 user=postgres dbname=postgres password=" + pw + " sslmode=disable"
+		connectionString = "host=db_postgres port=5432 user=postgres dbname=postgres password=" + pgPassword + " sslmode=disable"
 	}
 
 	db, err := sql.Open("postgres", connectionString)
@@ -183,11 +180,12 @@ func (s *Storage) NewUser(username, password string) (*User, error) {
 		return nil, err
 	}
 
-	usr := new(User)
-	usr.username = username
-	usr.encryptedPassword = string(encryptedPassword)
-	usr.uuid = uuid.New()
-	usr.dateJoined = time.Now().UTC()
+	usr := User{
+		username:          username,
+		encryptedPassword: string(encryptedPassword),
+		uuid:              uuid.New(),
+		dateJoined:        time.Now().UTC(),
+	}
 
 	fmt.Println("create user", usr.username, usr.uuid)
 
@@ -207,7 +205,7 @@ func (s *Storage) NewUser(username, password string) (*User, error) {
 		return nil, err
 	}
 
-	return usr, nil
+	return &usr, nil
 }
 
 func (s *Storage) DeleteUser(uuid string) error {

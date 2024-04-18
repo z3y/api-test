@@ -1,15 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
-
-	"github.com/joho/godotenv"
+	"strings"
 )
 
 var (
-	secretKey []byte
+	secretKey  []byte
+	pgPassword string
 )
 
 func main() {
@@ -19,12 +20,24 @@ func main() {
 
 	fmt.Println("key: ", key)
 
-	_, isDocker := os.LookupEnv("POSTGRES_PASSWORD")
+	isDocker := false
+	pgPassword, isDocker = os.LookupEnv("POSTGRES_PASSWORD")
+	env := make(map[string]string)
 	if !isDocker {
-		err := godotenv.Load()
+		file, err := os.Open(".env")
 		if err != nil {
-			log.Fatal("Error loading .env file")
+			log.Fatal("error loading .env file")
 		}
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			parts := strings.SplitN(line, "=", 2)
+			env[parts[0]] = parts[1]
+		}
+
+		pgPassword = env["POSTGRES_PASSWORD"]
 	}
 
 	storage := new(Storage)
@@ -45,4 +58,5 @@ func main() {
 
 	api := NewApi(":3000", storage)
 	api.Run()
+
 }
