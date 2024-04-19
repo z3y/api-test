@@ -32,6 +32,7 @@ func (a *Api) Run() {
 	router.HandleFunc("/user", withJwt(a.handleUser)) // get current user
 	router.HandleFunc("/register", a.handleRegister)  // register
 	router.HandleFunc("/login", a.handleLogin)        // login and get a token
+	router.HandleFunc("/exists", a.handleExists)      // login and get a token
 
 	http.ListenAndServe(a.listenAddr, router)
 }
@@ -276,4 +277,26 @@ func praseBasicAuthentication(authorization string) (username, password string, 
 	}
 
 	return authParts[0], authParts[1], nil
+}
+
+func (a *Api) handleExists(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method != "GET" {
+		badRequest(w)
+		return
+	}
+
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		writeJson(w, http.StatusNotFound, ErrorResponse{Error: "no username query"})
+		return
+	}
+
+	exists, err := a.storage.UsernameTaken(username)
+	if err != nil {
+		badRequest(w)
+		return
+	}
+
+	writeJson(w, http.StatusOK, map[string]bool{"user_exists": exists})
 }
