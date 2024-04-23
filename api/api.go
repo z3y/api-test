@@ -5,11 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/gorilla/mux"
 )
 
 type Api struct {
@@ -26,15 +25,13 @@ func NewApi(listenAddr string, storage *Storage) *Api {
 
 func (a *Api) Run() {
 
-	router := mux.NewRouter()
+	http.HandleFunc("GET /users/{uuid}", a.handleUsers) // get user by id
+	http.HandleFunc("/user", withJwt(a.handleUser))     // get or delete current user
+	http.HandleFunc("POST /register", a.handleRegister) // register
+	http.HandleFunc("POST /login", a.handleLogin)       // login and get a token
+	http.HandleFunc("GET /exists", a.handleExists)      // login and get a token
 
-	router.HandleFunc("/users/{uuid}", a.handleUsers) // get user by id
-	router.HandleFunc("/user", withJwt(a.handleUser)) // get current user
-	router.HandleFunc("/register", a.handleRegister)  // register
-	router.HandleFunc("/login", a.handleLogin)        // login and get a token
-	router.HandleFunc("/exists", a.handleExists)      // login and get a token
-
-	http.ListenAndServe(a.listenAddr, router)
+	log.Fatal(http.ListenAndServe(a.listenAddr, nil))
 }
 
 func writeJson(w http.ResponseWriter, status int, v any) error {
@@ -66,70 +63,9 @@ type DeleteRequest struct {
 }
 
 func (a *Api) handleUsers(w http.ResponseWriter, r *http.Request) {
-
-	vars := mux.Vars(r)
-	uuid := vars["uuid"]
-
-	authId := r.Context().Value(ContextUserIdKey)
-	if authId.(string) != uuid {
-		unauthorized(w)
-		return
-	}
+	uuid := r.PathValue("uuid")
 
 	user, err := a.storage.GetUserByUuid(uuid)
-	if err != nil {
-		fmt.Println(err)
-		writeJson(w, http.StatusNotFound, ErrorResponse{Error: "user not found"})
-		return
-	}
-
-	if r.Method == "GET" {
-
-		resp := UserResponse{
-			Username: user.username,
-			JoinDate: user.dateJoined,
-			Uuid:     user.uuid.String(),
-		}
-
-		writeJson(w, http.StatusOK, resp)
-
-	} else if r.Method == "DELETE" {
-
-		req := DeleteRequest{}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			badRequest(w)
-			return
-		}
-
-		if !PasswordValid(user.encryptedPassword, req.Password) {
-			badRequest(w)
-			return
-		}
-
-		err = a.storage.DeleteUser(uuid)
-		if err != nil {
-			fmt.Println(err)
-			badRequest(w)
-			return
-		}
-
-	} else {
-		badRequest(w)
-		return
-	}
-
-}
-
-func (a *Api) handleUser(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method != "GET" {
-		badRequest(w)
-		return
-	}
-
-	authId := r.Context().Value(ContextUserIdKey)
-
-	user, err := a.storage.GetUserByUuid(authId.(string))
 	if err != nil {
 		fmt.Println(err)
 		writeJson(w, http.StatusNotFound, ErrorResponse{Error: "user not found"})
@@ -145,12 +81,43 @@ func (a *Api) handleUser(w http.ResponseWriter, r *http.Request) {
 	writeJson(w, http.StatusOK, resp)
 }
 
-func (a *Api) handleRegister(w http.ResponseWriter, r *http.Request) {
+func (a *Api) handleUser(w http.ResponseWriter, r *http.Request) {
 
-	if r.Method != "POST" {
-		badRequest(w)
+	authId := r.Context().Value(ContextUserIdKey)
+
+	if authId == nil || authId.(string) == "" {
+		unauthorized(w)
 		return
 	}
+
+	user, err := a.storage.GetUserByUuid(authId.(string))
+	if err != nil {
+		fmt.Println(err)
+		writeJson(w, http.StatusNotFound, ErrorResponse{Error: "user not found"})
+		return
+	}
+
+	if r.Method == http.MethodGet {
+
+		resp := UserResponse{
+			Username: user.username,
+			JoinDate: user.dateJoined,
+			Uuid:     user.uuid.String(),
+		}
+
+		writeJson(w, http.StatusOK, resp)
+	} else if r.Method == http.MethodDelete {
+
+		err = a.storage.DeleteUser(user.uuid.String())
+		if err != nil {
+			fmt.Println(err)
+			badRequest(w)
+			return
+		}
+	}
+}
+
+func (a *Api) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	authorization := r.Header.Get("Authorization")
 	username, password, err := praseBasicAuthentication(authorization)
@@ -184,11 +151,6 @@ type LoginResponse struct {
 }
 
 func (a *Api) handleLogin(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method != "POST" {
-		badRequest(w)
-		return
-	}
 
 	authorization := r.Header.Get("Authorization")
 	username, password, err := praseBasicAuthentication(authorization)
@@ -280,11 +242,6 @@ func praseBasicAuthentication(authorization string) (username, password string, 
 }
 
 func (a *Api) handleExists(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method != "GET" {
-		badRequest(w)
-		return
-	}
 
 	username := r.URL.Query().Get("username")
 	if username == "" {
